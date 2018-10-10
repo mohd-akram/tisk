@@ -4,7 +4,7 @@ const path = require('path');
 const util = require('util');
 
 const ArgumentParser = require('argparse').ArgumentParser;
-const colors = require('colors');
+const colors = require('colors/safe');
 const ts = require('typescript');
 
 const fsReadFile = util.promisify(fs.readFile);
