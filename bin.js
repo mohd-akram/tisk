@@ -211,7 +211,7 @@ async function main() {
   }
 
   if (args.warning) {
-    for (const warning of args.warning) {
+    for (const warning of args.warning.filter(w => w != 'error')) {
       const parts = warning.split('=');
       if (parts.length > 2 || (parts.length == 2 && parts[0] != 'error'))
         throw new Error(`Invalid warning option "${warning}"`)
