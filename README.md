@@ -30,6 +30,14 @@ tisk -m -o lib src/*
 tisk -d -o lib src/*
 ```
 
+Features
+--------
+
+### Relative Import Path Mapping
+
+`tisk` will automatically map relative import paths based on the output
+directory if `module` is set to `commonjs` in `tsconfig.json`.
+
 Warnings
 --------
 

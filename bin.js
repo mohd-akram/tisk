@@ -146,7 +146,40 @@ function processDiagnostics(diagnostics, warnings, werror) {
 
 function compile(fileNames, options, warnings, werror) {
   const program = ts.createProgram(fileNames, options);
-  const emitResult = program.emit();
+
+  const transformers = options.module == ts.ModuleKind.CommonJS ? {
+    before: [
+      context => file => {
+        const filename = file.fileName;
+        function visit(node) {
+          if (
+            ts.isImportDeclaration(node) ||
+            ts.isImportEqualsDeclaration(node) ||
+            (
+              ts.isCallExpression(node) &&
+              node.expression.kind == ts.SyntaxKind.ImportKeyword
+            )
+          )
+            return ts.visitNode(node, updateImport);
+          return ts.visitEachChild(node, visit, context);
+        }
+        function updateImport(token) {
+          if (!ts.isStringLiteral(token))
+            return ts.visitEachChild(token, updateImport, context);
+          if (token.text[0] != '.')
+            return token;
+          const importee = path.resolve(path.dirname(filename), token.text);
+          const out = path.resolve(options.outDir);
+          return ts.createStringLiteral(path.relative(out, importee));
+        }
+        return ts.visitNode(file, visit);
+      }
+    ]
+  } : undefined;
+
+  const emitResult = program.emit(
+    undefined, undefined, undefined, undefined, transformers
+  );
 
   const diagnostics = ts
     .getPreEmitDiagnostics(program)
