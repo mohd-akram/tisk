@@ -144,9 +144,13 @@ function processDiagnostics(diagnostics, warnings, werror) {
   return count;
 }
 
-function compile(fileNames, options, warnings, werror) {
-  const program = ts.createProgram(fileNames, options);
+function compile(filenames, options, warnings, werror) {
+  const program = ts.createProgram(filenames, options);
 
+  const absoluteBasenames = filenames.map(f => {
+    return path.resolve(path.dirname(f), path.basename(f, path.extname(f)));
+  });
+  const out = path.resolve(options.outDir);
   const transformers = options.module == ts.ModuleKind.CommonJS ? {
     before: [
       context => file => {
@@ -168,9 +172,13 @@ function compile(fileNames, options, warnings, werror) {
             return ts.visitEachChild(token, updateImport, context);
           if (token.text[0] != '.')
             return token;
-          const importee = path.resolve(path.dirname(filename), token.text);
-          const out = path.resolve(options.outDir);
-          return ts.createStringLiteral(path.relative(out, importee));
+          let importee = path.resolve(path.dirname(filename), token.text);
+          if (absoluteBasenames.includes(importee))
+            importee = path.resolve(out, token.text);
+          let p = path.relative(out, importee);
+          if (p[0] != '.')
+            p = `./${p}`;
+          return ts.createStringLiteral(p);
         }
         return ts.visitNode(file, visit);
       }
