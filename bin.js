@@ -5,9 +5,12 @@ const util = require('util');
 
 const ArgumentParser = require('argparse').ArgumentParser;
 const colors = require('colors/safe');
+const glob = util.promisify(require('glob'));
+const mkdirp = util.promisify(require('mkdirp'));
 const ts = require('typescript');
 
 const fsReadFile = util.promisify(fs.readFile);
+const fsWriteFile = util.promisify(fs.writeFile);
 
 const configFilename = 'tsconfig.json';
 
@@ -144,56 +147,168 @@ function processDiagnostics(diagnostics, warnings, werror) {
   return count;
 }
 
-function compile(filenames, options, warnings, werror) {
-  const program = ts.createProgram(filenames, options);
+async function compile(paths, options, warnings, werror) {
+  options = Object.assign({}, options);
 
-  const absoluteBasenames = filenames.map(f => {
-    return path.resolve(path.dirname(f), path.basename(f, path.extname(f)));
-  });
-  const out = path.resolve(options.outDir);
-  const transformers = options.module == ts.ModuleKind.CommonJS ? {
-    before: [
-      context => file => {
-        const filename = file.fileName;
-        function visit(node) {
-          if (
-            ts.isImportDeclaration(node) ||
-            ts.isImportEqualsDeclaration(node) ||
-            (
-              ts.isCallExpression(node) &&
-              node.expression.kind == ts.SyntaxKind.ImportKeyword
-            )
-          )
-            return ts.visitNode(node, updateImport);
-          return ts.visitEachChild(node, visit, context);
+  paths = paths.map(p => path.resolve(p));
+  options.outDir = path.resolve(options.outDir);
+
+  // Map to maintain descending order
+  const pathMap = new Map();
+
+  if (options.pathMap) {
+    const temp = {};
+    for (const [from, to] of Object.entries(options.pathMap))
+      temp[path.resolve(from)] = path.resolve(to);
+    options.pathMap = temp;
+    for (const from of Object.keys(options.pathMap).sort().reverse())
+      pathMap.set(from, options.pathMap[from]);
+  }
+
+  // Map of input files to their output directories
+  const files = {};
+  // Map of input directories to their output directories
+  const directories = {};
+
+  // Map of output directories to their files
+  const basenames = {};
+
+  for (const p of paths) {
+    let rootDir;
+    let pathFiles;
+    let isDirectory;
+    if (['.ts', 'tsx'].includes(path.extname(p))) {
+      rootDir = path.dirname(p);
+      pathFiles = [p];
+      isDirectory = false;
+    } else {
+      rootDir = p;
+      pathFiles = await glob(`${p}/**/*.{ts,tsx}`);
+      isDirectory = true;
+    }
+    for (const f of pathFiles) {
+      if (f in files)
+        throw new Error(`Duplicate file "${f}"`);
+      const dir = path.dirname(f);
+      const basename = path.basename(f);
+      const outDir = path.join(
+        options.outDir, path.relative(rootDir, dir)
+      );
+      if (!basenames[outDir])
+        basenames[outDir] = new Set();
+      if (basenames[outDir].has(basename))
+        throw new Error(`File "${f}" will overwrite another file`);
+      files[f] = outDir;
+      basenames[outDir].add(basename);
+      if (isDirectory)
+        directories[dir] = outDir;
+    }
+  }
+
+  const program = ts.createProgram(Object.keys(files), options);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  const count = processDiagnostics(diagnostics, warnings, werror);
+
+  if (count.errors)
+    return count;
+
+  const sortedDirs = Object.values(files).map(d => d + path.sep).sort();
+  for (const [i, dir] of sortedDirs.entries()) {
+    if (i < sortedDirs.length - 1 && sortedDirs[i + 1].startsWith(dir))
+      continue;
+    await mkdirp(dir);
+  }
+
+  const transformer = context => file => {
+    const filename = file.fileName;
+    function visit(node) {
+      if (
+        ts.isImportDeclaration(node) ||
+        ts.isImportEqualsDeclaration(node) ||
+        (
+          ts.isCallExpression(node) &&
+          node.expression.kind == ts.SyntaxKind.ImportKeyword
+        )
+      )
+        return ts.visitNode(node, updateImport);
+      return ts.visitEachChild(node, visit, context);
+    }
+    function updateImport(token) {
+      if (!ts.isStringLiteral(token))
+        return ts.visitEachChild(token, updateImport, context);
+      if (token.text[0] != '.')
+        return token;
+      const dir = path.dirname(filename);
+      const importerOutDir = files[filename];
+      const importee =
+        token.text == '.' ? dir + path.sep + '.' : path.join(dir, token.text);
+      const importeeOutDir =
+        files[importee + '.ts'] || files[importee + '.tsx'] ||
+        directories[importee];
+      let p;
+      if (importeeOutDir) {
+        p = path.relative(
+          importerOutDir, path.join(importeeOutDir, path.basename(importee))
+        );
+      } else {
+        for (const [from, to] of pathMap) {
+          if ((importee + path.sep).startsWith(from + path.sep)) {
+            const r = path.relative(from, importee);
+            p = path.relative(importerOutDir, path.join(to, r));
+            break;
+          }
         }
-        function updateImport(token) {
-          if (!ts.isStringLiteral(token))
-            return ts.visitEachChild(token, updateImport, context);
-          if (token.text[0] != '.')
-            return token;
-          let importee = path.resolve(path.dirname(filename), token.text);
-          if (absoluteBasenames.includes(importee))
-            importee = path.resolve(out, token.text);
-          let p = path.relative(out, importee);
-          if (p[0] != '.')
-            p = `./${p}`;
-          return ts.createStringLiteral(p);
-        }
-        return ts.visitNode(file, visit);
       }
-    ]
-  } : undefined;
+      if (!p)
+        return token;
+      if (p[0] != '.')
+        p = `./${p}`;
+      return ts.createStringLiteral(p);
+    }
+    return ts.visitNode(file, visit);
+  };
 
-  const emitResult = program.emit(
-    undefined, undefined, undefined, undefined, transformers
-  );
+  for (const file in files) {
+    if (file.endsWith('.d.ts'))
+      continue;
 
-  const diagnostics = ts
-    .getPreEmitDiagnostics(program)
-    .concat(emitResult.diagnostics);
+    const outDir = files[file];
+    const baseOutFile = path.join(
+      outDir, path.basename(file, path.extname(file))
+    );
+    const jsFile = baseOutFile + '.js';
+    const jsMapFile = jsFile + '.map';
+    const declarationFile = baseOutFile + '.d.ts';
+    const declarationMapFile = declarationFile + '.map';
 
-  return processDiagnostics(diagnostics, warnings, werror);
+    const outputs = {}
+
+    program.emit(program.getSourceFile(file), (filename, data) => {
+      for (const extension of ['.js', '.js.map', '.d.ts', '.d.ts.map']) {
+        if (filename.endsWith(extension)) {
+          outputs[extension] = data;
+          break;
+        }
+      }
+    }, undefined, undefined, { before: [transformer] });
+
+    await fsWriteFile(jsFile, outputs['.js']);
+    if (outputs['.js.map']) {
+      const map = JSON.parse(outputs['.js.map']);
+      map.sources = [path.relative(outDir, file)];
+      await fsWriteFile(jsMapFile, JSON.stringify(map));
+    }
+
+    if (outputs['.d.ts'])
+      await fsWriteFile(declarationFile, outputs['.d.ts']);
+    if (outputs['.d.ts.map']) {
+      const map = JSON.parse(outputs['.d.ts.map']);
+      map.sources = [path.relative(outDir, file)];
+      await fsWriteFile(declarationMapFile, JSON.stringify(map));
+    }
+  }
+
+  return count;
 }
 
 async function main() {
@@ -218,6 +333,12 @@ async function main() {
     dest: 'map',
     help: 'Generate source maps',
     action: 'storeTrue'
+  });
+
+  parser.addArgument('-p', {
+    dest: 'path',
+    help: 'Import path map',
+    action: 'append'
   });
 
   parser.addArgument('-W', {
@@ -283,8 +404,11 @@ async function main() {
   if (args.output)
     compilerOptions.outDir = args.output;
 
-  if (args.declaration)
+  if (args.declaration) {
     compilerOptions.declaration = true;
+    if (args.map)
+      compilerOptions.declarationMap = true;
+  }
 
   if (args.map) {
     if (files.length)
@@ -295,10 +419,23 @@ async function main() {
     }
   }
 
+  if (args.path) {
+    const pathMap = {};
+    for (const path of args.path) {
+      const parts = path.split(':');
+      if (parts.length > 2)
+        throw new Error(`Invalid path map option "${path}"`);
+      const from = parts[0];
+      const to = parts[1] || from;
+      pathMap[from] = to;
+    }
+    compilerOptions.pathMap = pathMap;
+  }
+
   if (files.length) {
     const count = compile(files, compilerOptions, warnings, werror);
     if (count.errors || count.warnings) {
-      let messageParts = [];
+      const messageParts = [];
       if (count.warnings)
         messageParts.push(
           `${count.warnings} ${count.warnings == 1 ? 'warning' : 'warnings'}`
@@ -315,7 +452,7 @@ async function main() {
         console.warn(message);
     }
   } else {
-    const text = await fsReadFile(process.stdin.fd, { encoding: 'utf-8' });
+    const text = await fsReadFile(process.stdin.fd, 'utf-8');
     const output = ts.transpileModule(text, { compilerOptions });
     process.stdout.write(output.outputText);
   }

@@ -7,7 +7,8 @@ Synposis
 --------
 
 ```
-usage: bin.js [-h] [-v] [-o OUTPUT] [-d] [-m] [-W WARNING] [file [file ...]]
+usage: bin.js [-h] [-v] [-o OUTPUT] [-d] [-m] [-p PATH] [-W WARNING]
+              [file [file ...]]
 ```
 
 Examples
@@ -18,25 +19,26 @@ Examples
 echo "console.log('Hello, world')" | tisk | node
 
 # All warnings as errors
-tisk -Werror -o lib src/*
+tisk -Werror -o lib src
 
 # Specific warnings as errors
-tisk -Werror=implicit-any -Wimplicit-this -o lib src/*
+tisk -Werror=implicit-any -Wimplicit-this -o lib src
 
 # Source maps
-tisk -m -o lib src/*
+tisk -m -o lib src
 
 # Declarations
-tisk -d -o lib src/*
+tisk -d -o lib src
+
+# Map external import paths based on output directory
+# Input: src/main.ts: import * as vendor from '../vendor'
+# Output: dist/lib/main.js: import * as vendor from '../../vendor'
+tisk -p vendor -o dist/lib src
+# or
+# Input: src/main.ts: import * as vendor from '../vendor'
+# Output: dist/lib/main.js: import * as vendor from '../../libs'
+tisk -p vendor:libs -o dist/lib src
 ```
-
-Features
---------
-
-### Relative Import Path Mapping
-
-`tisk` will automatically map relative import paths based on the output
-directory if `module` is set to `commonjs` in `tsconfig.json`.
 
 Warnings
 --------
