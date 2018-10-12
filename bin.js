@@ -240,15 +240,15 @@ async function compile(paths, options, warnings, werror) {
         return token;
       const dir = path.dirname(filename);
       const importerOutDir = files[filename];
-      const importee =
-        token.text == '.' ? dir + path.sep + '.' : path.join(dir, token.text);
+      const importee = path.join(dir, token.text);
       const importeeOutDir =
         files[importee + '.ts'] || files[importee + '.tsx'] ||
         directories[importee];
       let p;
       if (importeeOutDir) {
         p = path.relative(
-          importerOutDir, path.join(importeeOutDir, path.basename(importee))
+          importerOutDir, importee in directories ? importeeOutDir :
+            path.join(importeeOutDir, path.basename(importee))
         );
       } else {
         for (const [from, to] of pathMap) {
