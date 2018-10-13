@@ -147,6 +147,10 @@ function processDiagnostics(diagnostics, warnings, werror) {
   return count;
 }
 
+function escapeRegex(s) {
+  return String(s).replace(/[\\^$*+?.()|[\]{}]/g, '\\$&');
+}
+
 async function compile(paths, options, warnings, werror) {
   options = Object.assign({}, options);
 
@@ -183,7 +187,8 @@ async function compile(paths, options, warnings, werror) {
       isDirectory = false;
     } else {
       rootDir = p;
-      pathFiles = await glob(`${p}/**/*.{ts,tsx}`);
+      pathFiles = (await glob(`${p}/**/*.{ts,tsx}`))
+        .map(f => path.normalize(f));
       isDirectory = true;
     }
     for (const f of pathFiles) {
@@ -219,8 +224,10 @@ async function compile(paths, options, warnings, werror) {
     await mkdirp(dir);
   }
 
+  const sep = new RegExp(escapeRegex(path.sep), 'g');
+
   const transformer = context => file => {
-    const filename = file.fileName;
+    const filename = path.normalize(file.fileName);
     function visit(node) {
       if (
         ts.isImportDeclaration(node) ||
@@ -262,8 +269,8 @@ async function compile(paths, options, warnings, werror) {
       if (!p)
         return token;
       if (p[0] != '.')
-        p = `./${p}`;
-      return ts.createStringLiteral(p);
+        p = `.${path.sep}${p}`;
+      return ts.createStringLiteral(p.replace(sep, '/'));
     }
     return ts.visitNode(file, visit);
   };
