@@ -249,8 +249,8 @@ async function compile(paths, options, warnings, werror) {
       const importerOutDir = files[filename];
       const importee = path.join(dir, token.text);
       const importeeOutDir =
-        files[importee + '.ts'] || files[importee + '.tsx'] ||
-        directories[importee];
+        directories[importee] ||
+        files[importee + '.ts'] || files[importee + '.tsx'];
       let p;
       if (importeeOutDir) {
         p = path.relative(
