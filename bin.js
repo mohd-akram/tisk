@@ -440,7 +440,7 @@ async function main() {
   }
 
   if (files.length) {
-    const count = compile(files, compilerOptions, warnings, werror);
+    const count = await compile(files, compilerOptions, warnings, werror);
     if (count.errors || count.warnings) {
       const messageParts = [];
       if (count.warnings)
