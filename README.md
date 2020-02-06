@@ -3,7 +3,7 @@ tisk
 
 `tisk` is a simpler alternative to `tsc`, the standard TypeScript compiler CLI.
 
-Synposis
+Synopsis
 --------
 
 ```
