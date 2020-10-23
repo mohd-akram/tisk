@@ -1,16 +1,12 @@
 #!/usr/bin/env node
-const fs = require('fs');
+const { promises: fs } = require('fs');
 const path = require('path');
 const util = require('util');
 
 const ArgumentParser = require('argparse').ArgumentParser;
 const colors = require('colors/safe');
 const glob = util.promisify(require('glob'));
-const mkdirp = util.promisify(require('mkdirp'));
 const ts = require('typescript');
-
-const fsReadFile = util.promisify(fs.readFile);
-const fsWriteFile = util.promisify(fs.writeFile);
 
 const configFilename = 'tsconfig.json';
 
@@ -67,7 +63,7 @@ async function getCompilerOptions(options) {
   } else {
     let text;
     try {
-      text = await fsReadFile(configFilename, 'utf-8');
+      text = await fs.readFile(configFilename, 'utf-8');
     } catch (e) {
       if (e.code != 'ENOENT')
         throw [{
@@ -221,7 +217,7 @@ async function compile(paths, options, warnings, werror) {
   for (const [i, dir] of sortedDirs.entries()) {
     if (i < sortedDirs.length - 1 && sortedDirs[i + 1].startsWith(dir))
       continue;
-    await mkdirp(dir);
+    await fs.mkdir(dir, { recursive: true });
   }
 
   const sep = new RegExp(escapeRegex(path.sep), 'g');
@@ -299,19 +295,19 @@ async function compile(paths, options, warnings, werror) {
       }
     }, undefined, undefined, { before: [transformer] });
 
-    await fsWriteFile(jsFile, outputs['.js']);
+    await fs.writeFile(jsFile, outputs['.js']);
     if (outputs['.js.map']) {
       const map = JSON.parse(outputs['.js.map']);
       map.sources = [path.relative(outDir, file)];
-      await fsWriteFile(jsMapFile, JSON.stringify(map));
+      await fs.writeFile(jsMapFile, JSON.stringify(map));
     }
 
     if (outputs['.d.ts'])
-      await fsWriteFile(declarationFile, outputs['.d.ts']);
+      await fs.writeFile(declarationFile, outputs['.d.ts']);
     if (outputs['.d.ts.map']) {
       const map = JSON.parse(outputs['.d.ts.map']);
       map.sources = [path.relative(outDir, file)];
-      await fsWriteFile(declarationMapFile, JSON.stringify(map));
+      await fs.writeFile(declarationMapFile, JSON.stringify(map));
     }
   }
 
@@ -320,46 +316,50 @@ async function compile(paths, options, warnings, werror) {
 
 async function main() {
   const parser = new ArgumentParser({
-    version: require('./package.json').version,
-    addHelp: true,
+    add_help: true,
     description: 'TypeScript compiler'
   });
 
-  parser.addArgument('-o', {
+  parser.add_argument('-v', '--version', {
+    action: 'version',
+    version: require('./package.json').version
+  });
+
+  parser.add_argument('-o', {
     dest: 'output',
     help: 'Output directory'
   });
 
-  parser.addArgument('-d', {
+  parser.add_argument('-d', {
     dest: 'declaration',
     help: 'Generate declarations',
-    action: 'storeTrue'
+    action: 'store_true'
   });
 
-  parser.addArgument('-m', {
+  parser.add_argument('-m', {
     dest: 'map',
     help: 'Generate source maps',
-    action: 'storeTrue'
+    action: 'store_true'
   });
 
-  parser.addArgument('-p', {
+  parser.add_argument('-p', {
     dest: 'path',
     help: 'Import path map',
     action: 'append'
   });
 
-  parser.addArgument('-W', {
+  parser.add_argument('-W', {
     action: 'append',
     dest: 'warning',
     help: 'Warning'
   });
 
-  parser.addArgument('file', {
+  parser.add_argument('file', {
     action: 'append',
     nargs: '*'
   });
 
-  const args = parser.parseArgs();
+  const args = parser.parse_args();
 
   let compilerOptions;
 
@@ -459,7 +459,7 @@ async function main() {
         console.warn(message);
     }
   } else {
-    const text = await fsReadFile(process.stdin.fd, 'utf-8');
+    const text = await fs.readFile(process.stdin.fd, 'utf-8');
     const output = ts.transpileModule(text, { compilerOptions });
     process.stdout.write(output.outputText);
   }
