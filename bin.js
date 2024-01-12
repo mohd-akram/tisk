@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-const { promises: fs } = require("fs");
+const fs = require("fs/promises");
 const path = require("path");
-const util = require("util");
 
 const ArgumentParser = require("argparse").ArgumentParser;
 const colors = require("colors/safe");
-const glob = util.promisify(require("glob"));
+const { glob } = require("glob");
 const ts = require("typescript");
 
 const configFilename = "tsconfig.json";
@@ -259,7 +258,7 @@ async function compile(paths, options, warnings, werror) {
       }
       if (!p) return token;
       if (p[0] != ".") p = `.${path.sep}${p}`;
-      return ts.createStringLiteral(p.replace(sep, "/"));
+      return context.factory.createStringLiteral(p.replace(sep, "/"));
     }
     return ts.visitNode(file, visit);
   };
@@ -455,10 +454,6 @@ async function main() {
     process.stdout.write(output.outputText);
   }
 }
-
-process.once("unhandledRejection", (err) => {
-  throw err;
-});
 
 (async () => {
   try {
