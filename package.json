@@ -26,14 +26,14 @@
   },
   "homepage": "https://github.com/mohd-akram/tisk#readme",
   "peerDependencies": {
-    "typescript": "^4.0.3"
+    "typescript": "^5.3.3"
   },
   "dependencies": {
     "argparse": "^2.0.1",
     "colors": "^1.4.0",
-    "glob": "^7.1.6"
+    "glob": "^10.3.10"
   },
   "devDependencies": {
-    "typescript": "^4.0.3"
+    "typescript": "^5.3.3"
   }
 }
