@@ -2,9 +2,11 @@
   "name": "tisk",
   "version": "1.0.9",
   "description": "Alternative TypeScript compiler CLI",
-  "bin": "bin.js",
+  "type": "module",
+  "bin": "bin/tisk",
   "files": [
-    "bin.js"
+    "bin",
+    "lib"
   ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
