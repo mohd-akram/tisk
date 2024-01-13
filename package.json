@@ -3,7 +3,9 @@
   "version": "2.0.0",
   "description": "Alternative TypeScript compiler CLI",
   "type": "module",
-  "bin": "bin/tisk",
+  "bin": {
+    "tisk": "bin/tisk"
+  },
   "files": [
     "bin",
     "lib"
