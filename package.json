@@ -1,6 +1,6 @@
 {
   "name": "tisk",
-  "version": "1.0.9",
+  "version": "2.0.0",
   "description": "Alternative TypeScript compiler CLI",
   "type": "module",
   "bin": "bin/tisk",
